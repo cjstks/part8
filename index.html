@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>iSCSI 동작 과정</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+
+        h1 {
+            text-align: center;
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+
+        .animation-container {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 40px;
+            margin-bottom: 30px;
+            min-height: 400px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .devices {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            height: 300px;
+        }
+
+        .device {
+            width: 150px;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .device-box {
+            width: 150px;
+            height: 150px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
+            box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+            transition: transform 0.3s;
+        }
+
+        .device-box:hover {
+            transform: scale(1.05);
+        }
+
+        .device-icon {
+            font-size: 4em;
+            filter: brightness(0) invert(1);
+        }
+
+        .device-label {
+            font-weight: bold;
+            color: #333;
+            font-size: 1.1em;
+        }
+
+        .device-sublabel {
+            color: #666;
+            font-size: 0.9em;
+            margin-top: 5px;
+        }
+
+        .packet {
+            position: absolute;
+            width: 80px;
+            height: 60px;
+            background: #4CAF50;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 0.8em;
+            box-shadow: 0 5px 15px rgba(76, 175, 80, 0.4);
+            opacity: 0;
+            transition: all 0.5s ease;
+            text-align: center;
+            padding: 5px;
+            z-index: 5;
+        }
+
+        .packet.active {
+            opacity: 1;
+        }
+
+        .connection-line {
+            position: absolute;
+            top: 50%;
+            left: 20%;
+            width: 60%;
+            height: 3px;
+            background: #ddd;
+            transform: translateY(-50%);
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 7px 20px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary {
+            background: #e0e0e0;
+            color: #333;
+        }
+
+        .btn-secondary:hover {
+            background: #d0d0d0;
+        }
+
+        .step-indicator {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .step {
+            flex: 1;
+            min-width: 150px;
+            padding: 15px;
+            background: #f0f0f0;
+            border-radius: 10px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .step:hover {
+            background: #e0e0e0;
+        }
+
+        .step.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            transform: scale(1.05);
+        }
+
+        .step-number {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .step-name {
+            font-size: 0.9em;
+        }
+
+        .info-panel {
+            background: #f8f9fa;
+            border-left: 5px solid #667eea;
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+        }
+
+        .info-title {
+            font-size: 1.3em;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+
+        .info-content {
+            color: #555;
+            line-height: 1.8;
+        }
+
+        .info-list {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .info-list li {
+            padding: 8px 0;
+            padding-left: 25px;
+            position: relative;
+        }
+
+        .info-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        @keyframes moveRight {
+            0% {
+                left: 15%;
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                left: 75%;
+                opacity: 0;
+            }
+        }
+
+        @keyframes moveLeft {
+            0% {
+                left: 75%;
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+            100% {
+                left: 15%;
+                opacity: 0;
+            }
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+            }
+            50% {
+                transform: scale(1.1);
+            }
+        }
+
+        .pulse {
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e0e0e0;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            width: 0%;
+            transition: width 0.5s ease;
+            border-radius: 10px;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 20px;
+            }
+
+            h1 {
+                font-size: 1.8em;
+            }
+
+            .devices {
+                flex-direction: column;
+                height: auto;
+                gap: 50px;
+            }
+
+            .connection-line {
+                width: 3px;
+                height: 60%;
+                left: 50%;
+                top: 20%;
+            }
+
+            .device-box {
+                width: 120px;
+                height: 120px;
+            }
+
+            .step {
+                min-width: 100px;
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 iSCSI 동작 과정</h1>
+        <p class="subtitle">Internet Small Computer System Interface의 5단계 통신 과정</p>
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+
+        <div class="step-indicator">
+            <div class="step" data-step="0">
+                <div class="step-number">1</div>
+                <div class="step-name">Discovery</div>
+            </div>
+            <div class="step" data-step="1">
+                <div class="step-number">2</div>
+                <div class="step-name">Authentication</div>
+            </div>
+            <div class="step" data-step="2">
+                <div class="step-number">3</div>
+                <div class="step-name">Login</div>
+            </div>
+            <div class="step" data-step="3">
+                <div class="step-number">4</div>
+                <div class="step-name">LUN Discovery</div>
+            </div>
+            <div class="step" data-step="4">
+                <div class="step-number">5</div>
+                <div class="step-name">Data Transfer</div>
+            </div>
+        </div>
+
+        <div class="animation-container">
+            <div class="connection-line"></div>
+            <div class="devices">
+                <div class="device">
+                    <div class="device-box" id="initiator">
+                        <div class="device-icon">💻</div>
+                    </div>
+                    <div class="device-label">Initiator</div>
+                    <div class="device-sublabel">클라이언트</div>
+                </div>
+
+                <div class="device">
+                    <div class="device-box" id="target">
+                        <div class="device-icon">🗄️</div>
+                    </div>
+                    <div class="device-label">Target</div>
+                    <div class="device-sublabel">스토리지</div>
+                </div>
+            </div>
+
+            <div class="packet" id="packet"></div>
+        </div>
+
+        <div class="controls">
+            <button class="btn btn-primary" id="startBtn">▶️ 시작</button>
+            <button class="btn btn-primary" id="nextBtn">⏭️ 다음 단계</button>
+            <button class="btn btn-secondary" id="resetBtn">🔄 처음으로</button>
+        </div>
+
+        <div class="info-panel">
+            <div class="info-title" id="infoTitle">iSCSI 동작 과정을 시작하세요</div>
+            <div class="info-content" id="infoContent">
+                상단의 '시작' 버튼을 클릭하면 iSCSI의 5단계 통신 과정을 애니메이션으로 확인할 수 있습니다.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const steps = [
+            {
+                name: 'Discovery (탐색)',
+                direction: 'right',
+                packetText: 'SendTargets',
+                color: '#4CAF50',
+                info: {
+                    title: '1단계: Discovery (탐색)',
+                    content: `<ul class="info-list">
+                        <li><strong>목적:</strong> Initiator가 네트워크상의 Target을 찾아냅니다</li>
+                        <li><strong>방식:</strong> SendTargets 명령 또는 iSNS 서버 사용</li>
+                        <li><strong>전송 내용:</strong> "어떤 스토리지를 제공하나요?"</li>
+                        <li><strong>응답:</strong> Target이 IQN(iSCSI Qualified Name) 목록 반환</li>
+                        <li><strong>포트:</strong> TCP 3260</li>
+                    </ul>`
+                }
+            },
+            {
+                name: 'Authentication (인증)',
+                direction: 'left',
+                packetText: 'CHAP Challenge',
+                color: '#FF9800',
+                info: {
+                    title: '2단계: Authentication (인증)',
+                    content: `<ul class="info-list">
+                        <li><strong>목적:</strong> 보안을 위한 신원 확인</li>
+                        <li><strong>프로토콜:</strong> CHAP (Challenge-Handshake Authentication)</li>
+                        <li><strong>과정:</strong> Target이 Challenge 전송 → Initiator가 해시된 Response 반환</li>
+                        <li><strong>옵션:</strong> 양방향 인증(Mutual CHAP) 가능</li>
+                        <li><strong>보안:</strong> MD5 해시 사용</li>
+                    </ul>`
+                }
+            },
+            {
+                name: 'Login (세션 수립)',
+                direction: 'right',
+                packetText: 'Login PDU',
+                color: '#2196F3',
+                info: {
+                    title: '3단계: Login (로그인 및 세션 수립)',
+                    content: `<ul class="info-list">
+                        <li><strong>목적:</strong> Initiator와 Target 간 실제 연결 생성</li>
+                        <li><strong>세션 ID:</strong> SSID(Session ID) 할당</li>
+                        <li><strong>연결 ID:</strong> CID(Connection ID) 할당</li>
+                        <li><strong>협상:</strong> 전송 파라미터 설정 (MaxRecvDataSegmentLength 등)</li>
+                        <li><strong>다중 경로:</strong> 여러 TCP 연결을 하나의 세션으로 묶기 가능 (MPIO)</li>
+                    </ul>`
+                }
+            },
+            {
+                name: 'LUN Discovery (LUN 탐색)',
+                direction: 'left',
+                packetText: 'REPORT LUNS',
+                color: '#9C27B0',
+                info: {
+                    title: '4단계: LUN Discovery & Mapping',
+                    content: `<ul class="info-list">
+                        <li><strong>목적:</strong> Target이 제공하는 실제 저장공간 확인</li>
+                        <li><strong>명령어:</strong> SCSI INQUIRY, REPORT LUNS</li>
+                        <li><strong>LUN 목록:</strong> LUN 0 (500GB), LUN 1 (1TB), LUN 2 (2TB)...</li>
+                        <li><strong>OS 인식:</strong> 각 LUN을 로컬 디스크처럼 인식</li>
+                        <li><strong>예시:</strong> Linux: /dev/sdb, Windows: 디스크 관리, ESXi: 데이터스토어</li>
+                    </ul>`
+                }
+            },
+            {
+                name: 'Data Transfer (데이터 전송)',
+                direction: 'both',
+                packetText: 'READ/WRITE',
+                color: '#F44336',
+                info: {
+                    title: '5단계: Data Transfer (데이터 전송)',
+                    content: `<ul class="info-list">
+                        <li><strong>목적:</strong> 실제 I/O 작업 수행 (읽기/쓰기)</li>
+                        <li><strong>SCSI 명령:</strong> READ_10, READ_16, WRITE_10, WRITE_16</li>
+                        <li><strong>캡슐화:</strong> SCSI 명령 → iSCSI PDU → TCP/IP</li>
+                        <li><strong>전송 계층:</strong> Application → File System → SCSI → iSCSI → TCP/IP → Network</li>
+                        <li><strong>연속 작업:</strong> 세션이 유지되는 동안 계속적인 데이터 전송</li>
+                    </ul>`
+                }
+            }
+        ];
+
+        let currentStep = -1;
+        let isAnimating = false;
+        let autoPlay = false;
+
+        const packet = document.getElementById('packet');
+        const startBtn = document.getElementById('startBtn');
+        const nextBtn = document.getElementById('nextBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const infoTitle = document.getElementById('infoTitle');
+        const infoContent = document.getElementById('infoContent');
+        const progressFill = document.getElementById('progressFill');
+        const stepElements = document.querySelectorAll('.step');
+        const initiator = document.getElementById('initiator');
+        const target = document.getElementById('target');
+
+        stepElements.forEach((step, index) => {
+            step.addEventListener('click', () => {
+                if (!isAnimating) {
+                    currentStep = index - 1;
+                    nextStep();
+                }
+            });
+        });
+
+        startBtn.addEventListener('click', () => {
+            if (currentStep === -1) {
+                autoPlay = true;
+                nextStep();
+            }
+        });
+
+        nextBtn.addEventListener('click', () => {
+            if (!isAnimating && currentStep < steps.length - 1) {
+                autoPlay = false;
+                nextStep();
+            }
+        });
+
+        resetBtn.addEventListener('click', () => {
+            reset();
+        });
+
+        function nextStep() {
+            if (isAnimating || currentStep >= steps.length - 1) return;
+
+            currentStep++;
+            isAnimating = true;
+
+            const step = steps[currentStep];
+            
+            updateProgress();
+            updateStepIndicator();
+            updateInfo(step.info);
+
+            packet.textContent = step.packetText;
+            packet.style.background = step.color;
+            packet.style.top = '50%';
+            packet.style.transform = 'translateY(-50%)';
+
+            if (step.direction === 'right') {
+                animatePacket('right');
+                initiator.classList.add('pulse');
+                setTimeout(() => {
+                    target.classList.add('pulse');
+                    initiator.classList.remove('pulse');
+                }, 1500);
+            } else if (step.direction === 'left') {
+                animatePacket('left');
+                target.classList.add('pulse');
+                setTimeout(() => {
+                    initiator.classList.add('pulse');
+                    target.classList.remove('pulse');
+                }, 1500);
+            } else {
+                animatePacket('both');
+            }
+        }
+
+        function animatePacket(direction) {
+            packet.classList.add('active');
+
+            if (direction === 'right') {
+                packet.style.animation = 'moveRight 3s ease-in-out';
+            } else if (direction === 'left') {
+                packet.style.animation = 'moveLeft 3s ease-in-out';
+            } else {
+                packet.style.animation = 'moveRight 1.5s ease-in-out, moveLeft 1.5s ease-in-out 1.5s';
+            }
+
+            setTimeout(() => {
+                packet.classList.remove('active');
+                packet.style.animation = '';
+                isAnimating = false;
+                initiator.classList.remove('pulse');
+                target.classList.remove('pulse');
+
+                if (autoPlay && currentStep < steps.length - 1) {
+                    setTimeout(() => nextStep(), 500);
+                }
+            }, direction === 'both' ? 3000 : 3000);
+        }
+
+        function updateProgress() {
+            const progress = ((currentStep + 1) / steps.length) * 100;
+            progressFill.style.width = progress + '%';
+        }
+
+        function updateStepIndicator() {
+            stepElements.forEach((step, index) => {
+                if (index === currentStep) {
+                    step.classList.add('active');
+                } else {
+                    step.classList.remove('active');
+                }
+            });
+        }
+
+        function updateInfo(info) {
+            infoTitle.textContent = info.title;
+            infoContent.innerHTML = info.content;
+        }
+
+        function reset() {
+            currentStep = -1;
+            isAnimating = false;
+            autoPlay = false;
+            packet.classList.remove('active');
+            packet.style.animation = '';
+            initiator.classList.remove('pulse');
+            target.classList.remove('pulse');
+            progressFill.style.width = '0%';
+            
+            stepElements.forEach(step => {
+                step.classList.remove('active');
+            });
+
+            infoTitle.textContent = 'iSCSI 동작 과정을 시작하세요';
+            infoContent.innerHTML = "상단의 '시작' 버튼을 클릭하면 iSCSI의 5단계 통신 과정을 애니메이션으로 확인할 수 있습니다.";
+        }
+    </script>
+</body>
+</html>
